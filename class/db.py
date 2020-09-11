@@ -4,11 +4,15 @@
 # +-------------------------------------------------------------------
 # | Copyright (c) 2015-2099 宝塔软件(http://bt.cn) All rights reserved.
 # +-------------------------------------------------------------------
-# | Author: 黄文良 <287962566@qq.com>
+# | Author: hwliang <hwl@bt.cn>
 # +-------------------------------------------------------------------
 
 import sqlite3
-import os,re,public,time
+import os,time,sys
+os.chdir('/www/server/panel')
+if not 'class/' in sys.path:
+    sys.path.insert(0,'class/')
+import public
 
 class Sql():
     #------------------------------
@@ -26,7 +30,13 @@ class Sql():
 
     def __init__(self):
         self.__DB_FILE = 'data/default.db'
-    
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self,exc_type,exc_value,exc_trackback):
+        self.close()
+
     def __GetConn(self): 
         #取数据库对象
         try:
@@ -100,7 +110,7 @@ class Sql():
                     i=0
                     tmp1 = {}
                     for key in fields:
-                        tmp1[key] = row[i]
+                        tmp1[key.strip('`')] = row[i]
                         i += 1
                     tmp.append(tmp1)
                     del(tmp1)
@@ -121,9 +131,10 @@ class Sql():
         return self.select()
 
     def __format_field(self,field):
+        import re
         fields = []
         for key in field:
-            s_as = re.search('\s+as\s+',key,flags=re.IGNORECASE)
+            s_as = re.search(r'\s+as\s+',key,flags=re.IGNORECASE)
             if s_as:
                 as_tip = s_as.group()
                 key = key.split(as_tip)[1]
@@ -135,13 +146,13 @@ class Sql():
             tmp_cols = self.query('PRAGMA table_info('+self.__DB_TABLE+')',())
             cols = []
             for col in tmp_cols:
-                if len(col) > 2: cols.append(col[1])
+                if len(col) > 2: cols.append('`' + col[1] + '`')
             if len(cols) > 0: self.__OPT_FIELD = ','.join(cols)
 
     def getField(self,keyName):
         #取回指定字段
         try:
-            result = self.field(keyName).select();
+            result = self.field(keyName).select()
             if len(result) != 0:
                 return result[0][keyName]
             return result
@@ -182,7 +193,7 @@ class Sql():
             values=""
             for key in keys.split(','):
                 values += "?,"
-            values = values[0:len(values)-1];
+            values = values[0:len(values)-1]
             sql = "INSERT INTO "+self.__DB_TABLE+"("+keys+") "+"VALUES("+values+")"
             result = self.__DB_CONN.execute(sql,self.__to_tuple(param))
             id = result.lastrowid
@@ -302,7 +313,9 @@ class Sql():
     #写锁
     def write_lock(self):
         self.is_lock()
-        public.writeFile(self.__LOCK,"True")
+        with open(self.__LOCK,'wb+') as f:
+            f.close()
+
     #解锁
     def rm_lock(self):
         if os.path.exists(self.__LOCK):
@@ -323,7 +336,6 @@ class Sql():
         #创建数据表
         self.write_lock()
         self.__GetConn()
-        import public
         script = public.readFile('data/' + name + '.sql')
         result = self.__DB_CONN.executescript(script)
         self.__DB_CONN.commit()
@@ -334,7 +346,6 @@ class Sql():
         #执行脚本
         self.write_lock()
         self.__GetConn()
-        import public
         script = public.readFile(filename)
         result = self.__DB_CONN.executescript(script)
         self.__DB_CONN.commit()
